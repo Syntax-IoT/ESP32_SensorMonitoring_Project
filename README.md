@@ -1,2 +1,2 @@
-# Ammonia_Project_Nodered
+# ESP32_Sensors_NodeRed
 In this repo, we implement a custom esp32 interface with multiple sensors as dht22, mq135 and mq137 with the monitor of NodeRed platform.
