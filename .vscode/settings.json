@@ -1,0 +1,14 @@
+{
+  "python.autoComplete.extraPaths": [
+    "/media/sayed/emLinux/EL_repos/poky/bitbake/lib",
+    "/media/sayed/emLinux/EL_repos/poky/meta/lib"
+  ],
+  "python.analysis.extraPaths": [
+    "/media/sayed/emLinux/EL_repos/poky/bitbake/lib",
+    "/media/sayed/emLinux/EL_repos/poky/meta/lib"
+  ],
+  "files.associations": {
+    "*.conf": "bitbake",
+    "*.inc": "bitbake"
+  }
+}
