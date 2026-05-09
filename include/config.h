@@ -1,0 +1,62 @@
+#pragma once
+
+// ─────────────────────────────────────────────────────────
+// Connect your phone to it, open 192.168.4.1, enter the farm
+// Wi-Fi credentials once. They are saved to flash permanently.
+// ─────────────────────────────────────────────────────────
+#define WIFI_AP_NAME "SyntaxIoT_Network"
+#define WIFI_AP_PASSWORD "Syntax2026@"
+#define WIFI_TIMEOUT_S 120 // seconds before portal gives up
+
+// ─────────────────────────────────────────────────────────
+// MQTT broker
+// ─────────────────────────────────────────────────────────
+#define MQTT_HOST "92.113.29.250"
+#define MQTT_PORT 1883
+#define MQTT_USER "" // add if your broker needs auth
+#define MQTT_PASSWORD ""
+
+// ─────────────────────────────────────────────────────────
+// Device identity — change this per device before flashing
+// All 3 MQTT topics are built automatically from DEVICE_ID
+// ─────────────────────────────────────────────────────────
+#define DEVICE_ID "ESP_005"
+#define MQTT_CLIENT_ID DEVICE_ID
+
+// ─────────────────────────────────────────────────────────
+// MQTT topics  (syntax/{deviceID}/...)
+// ─────────────────────────────────────────────────────────
+#define TOPIC_DATA "syntax/" DEVICE_ID "/data"   // ESP32 → platform
+#define TOPIC_SET "syntax/" DEVICE_ID "/set"     // platform → ESP32
+#define TOPIC_RELAY "syntax/" DEVICE_ID "/relay" // ESP32 → platform
+
+// ─────────────────────────────────────────────────────────
+// GPIO pins
+// ─────────────────────────────────────────────────────────
+#define PIN_DHT22 4
+#define PIN_MQ135 34 // ADC1 — input only, safe for ADC
+#define PIN_MQ137 35 // ADC1 — input only, safe for ADC
+#define PIN_RELAY 26
+
+// ─────────────────────────────────────────────────────────
+// Sensor settings
+// ─────────────────────────────────────────────────────────
+#define DHT_TYPE DHT22
+#define SENSOR_INTERVAL_MS 5000 // publish every 5 seconds
+#define ADC_SAMPLES 10          // average 10 readings to reduce noise
+#define ADC_WARMUP_MS 30000     // MQ heater warm-up: 30 seconds
+
+// ─────────────────────────────────────────────────────────
+// Alert thresholds
+// ─────────────────────────────────────────────────────────
+#define TEMP_MAX_C 35.0f
+#define HUMIDITY_MIN_PCT 40.0f
+#define HUMIDITY_MAX_PCT 80.0f
+#define MQ135_ALERT 500
+#define MQ137_ALERT 300
+
+// ─────────────────────────────────────────────────────────
+// Reconnect behaviour
+// ─────────────────────────────────────────────────────────
+#define RECONNECT_INTERVAL_MS 5000
+#define MAX_RECONNECT_ATTEMPTS 10
