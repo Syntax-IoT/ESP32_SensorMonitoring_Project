@@ -20,7 +20,7 @@
 // Device identity — change this per device before flashing
 // All 3 MQTT topics are built automatically from DEVICE_ID
 // ─────────────────────────────────────────────────────────
-#define DEVICE_ID "ESP_005"
+#define DEVICE_ID "8b00c8a0-2d4a-4fe5-b6e8-6e5a39f089a5"
 #define MQTT_CLIENT_ID DEVICE_ID
 
 // ─────────────────────────────────────────────────────────
@@ -29,6 +29,14 @@
 #define TOPIC_DATA "syntax/" DEVICE_ID "/data"   // ESP32 → platform
 #define TOPIC_SET "syntax/" DEVICE_ID "/set"     // platform → ESP32
 #define TOPIC_RELAY "syntax/" DEVICE_ID "/relay" // ESP32 → platform
+
+// ─────────────────────────────────────────────────────────
+// Sensor presence flags
+// Comment out any sensor NOT physically connected
+// ─────────────────────────────────────────────────────────
+#define HAS_DHT22 // temp_1 + hum_1
+// #define HAS_MQ135 // co2_1
+// #define HAS_MQ137 // nh3_1
 
 // ─────────────────────────────────────────────────────────
 // GPIO pins
@@ -45,6 +53,7 @@
 #define SENSOR_INTERVAL_MS 5000 // publish every 5 seconds
 #define ADC_SAMPLES 10          // average 10 readings to reduce noise
 #define ADC_WARMUP_MS 30000     // MQ heater warm-up: 30 seconds
+#define DHT_MAX_FAILS 3         // consecutive fails before error log
 
 // ─────────────────────────────────────────────────────────
 // Alert thresholds
@@ -54,6 +63,11 @@
 #define HUMIDITY_MAX_PCT 80.0f
 #define MQ135_ALERT 500
 #define MQ137_ALERT 300
+
+// ─────────────────────────────────────────────────────────
+// Relay
+// ─────────────────────────────────────────────────────────
+#define RELAY_KEY "extr_1"
 
 // ─────────────────────────────────────────────────────────
 // Reconnect behaviour
