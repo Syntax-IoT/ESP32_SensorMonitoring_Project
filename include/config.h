@@ -35,8 +35,8 @@
 // Comment out any sensor NOT physically connected
 // ─────────────────────────────────────────────────────────
 #define HAS_DHT22 // temp_1 + hum_1
-// #define HAS_MQ135 // co2_1
-// #define HAS_MQ137 // nh3_1
+#define HAS_MQ135 // co2_1
+#define HAS_MQ137 // nh3_1
 
 // ─────────────────────────────────────────────────────────
 // GPIO pins

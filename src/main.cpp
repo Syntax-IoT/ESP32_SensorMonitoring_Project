@@ -13,6 +13,18 @@
 Logger logger;
 
 // ─────────────────────────────────────────────────────────
+// Runtime flags
+// ─────────────────────────────────────────────────────────
+bool sensorsWarmedUp = false;
+unsigned long lastPublish = 0;
+unsigned long lastReconnect = 0;
+unsigned long bootTime = 0;
+int reconnectAttempts = 0;
+
+// Prevent MQTT self-echo loops
+char lastPublishedRelayState[384] = "";
+
+// ─────────────────────────────────────────────────────────
 // Objects
 // ─────────────────────────────────────────────────────────
 #ifdef HAS_DHT22
@@ -70,15 +82,6 @@ struct SensorHealth {
   bool wasOffline = false; // prevents spamming the error log
   bool everSucceeded = false;
 } dhtHealth, mq135Health, mq137Health;
-
-// ─────────────────────────────────────────────────────────
-// Runtime flags
-// ─────────────────────────────────────────────────────────
-bool sensorsWarmedUp = false;
-unsigned long lastPublish = 0;
-unsigned long lastReconnect = 0;
-unsigned long bootTime = 0;
-int reconnectAttempts = 0;
 
 // ─────────────────────────────────────────────────────────
 // Forward declarations
@@ -215,27 +218,28 @@ void connectWiFi() {
                          WiFi.RSSI()));
 }
 
-// ─────────────────────────────────────────────────────────
-// syncNTP()
-// ─────────────────────────────────────────────────────────
 void syncNTP() {
-  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
+  // Egypt timezone with DST support
+  configTzTime("EET-2EEST,M4.5.5/0,M10.5.4/24", "pool.ntp.org",
+               "time.nist.gov");
+
   logger.info(CAT_NTP, "Syncing", "pool.ntp.org");
 
   struct tm tm {};
   unsigned long deadline = millis() + 10000UL;
+
   while (!getLocalTime(&tm) && millis() < deadline)
     delay(500);
 
   if (getLocalTime(&tm)) {
     logger.info(CAT_NTP, "Sync OK",
-                logger.fmt("%04d-%02d-%02d %02d:%02d:%02d UTC",
-                           tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                           tm.tm_hour, tm.tm_min, tm.tm_sec));
+                logger.fmt("%04d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900,
+                           tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
+                           tm.tm_sec));
   } else {
-    logger.warn(
-        CAT_NTP, "Sync failed",
-        "Scheduled timer mode may be inaccurate — timestamp fallback active");
+    logger.warn(CAT_NTP, "Sync failed",
+                "Scheduled timer mode may be inaccurate");
   }
 }
 
@@ -315,9 +319,6 @@ void connectMQTT() {
   }
 }
 
-// ─────────────────────────────────────────────────────────
-// mqttCallback()
-// ─────────────────────────────────────────────────────────
 void mqttCallback(char *topic, byte *payload, unsigned int length) {
   char msg[length + 1];
   memcpy(msg, payload, length);
@@ -326,30 +327,47 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   logger.info(CAT_MQTT, "Message received",
               logger.fmt("topic=%s payload=%s", topic, msg));
 
+  // Ignore echoed retained messages
+  if (strcmp(msg, lastPublishedRelayState) == 0) {
+    logger.debug(CAT_MQTT, "Ignoring self-echoed message", msg);
+    return;
+  }
+
   if (strcmp(topic, TOPIC_SET) != 0) {
     logger.warn(CAT_MQTT, "Unexpected topic", logger.fmt("topic=%s", topic));
     return;
   }
 
-  // ── Legacy plain strings ──────────────────────────────
+  // ─────────────────────────────────────────────────────
+  // Legacy plain string commands
+  // ─────────────────────────────────────────────────────
   if (strcasecmp(msg, "ON") == 0 || strcmp(msg, "1") == 0) {
     relay.mode = MODE_MANUAL;
     relay.manualTarget = true;
-    logger.info(CAT_RELAY, "Command accepted",
-                "legacy plain string → manual ON");
+
+    logger.info(CAT_RELAY, "Legacy command", "manual ON");
+
+    applyRelayMode();
     publishRelayState();
-    return;
-  }
-  if (strcasecmp(msg, "OFF") == 0 || strcmp(msg, "0") == 0) {
-    relay.mode = MODE_MANUAL;
-    relay.manualTarget = false;
-    logger.info(CAT_RELAY, "Command accepted",
-                "legacy plain string → manual OFF");
-    publishRelayState();
+
     return;
   }
 
-  // ── JSON command ──────────────────────────────────────
+  if (strcasecmp(msg, "OFF") == 0 || strcmp(msg, "0") == 0) {
+    relay.mode = MODE_MANUAL;
+    relay.manualTarget = false;
+
+    logger.info(CAT_RELAY, "Legacy command", "manual OFF");
+
+    applyRelayMode();
+    publishRelayState();
+
+    return;
+  }
+
+  // ─────────────────────────────────────────────────────
+  // Parse JSON
+  // ─────────────────────────────────────────────────────
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, msg);
   if (err != DeserializationError::Ok) {
@@ -358,161 +376,229 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     return;
   }
 
-  // Legacy: {"relay": true}
+  // ─────────────────────────────────────────────────────
+  // Legacy JSON
+  // ─────────────────────────────────────────────────────
   if (doc["relay"].is<bool>() && !doc.containsKey("mode")) {
     relay.mode = MODE_MANUAL;
     relay.manualTarget = doc["relay"].as<bool>();
-    logger.info(CAT_RELAY, "Command accepted",
-                logger.fmt("legacy JSON → manual %s",
-                           relay.manualTarget ? "ON" : "OFF"));
+    logger.info(CAT_RELAY, "Legacy JSON", relay.manualTarget ? "ON" : "OFF");
+
+    applyRelayMode();
     publishRelayState();
     return;
   }
 
   const char *mode = doc["mode"] | "";
+
   JsonObject cfg = doc["mode_config"].as<JsonObject>();
 
-  // ── Manual ────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
+  // MANUAL
+  // ─────────────────────────────────────────────────────
   if (strcmp(mode, "manual") == 0) {
+
     relay.mode = MODE_MANUAL;
+
     relay.manualTarget = (cfg["state"].as<int>() != 0);
+
     logger.info(CAT_RELAY, "Mode set: MANUAL",
                 logger.fmt("target=%s", relay.manualTarget ? "ON" : "OFF"));
   }
 
-  // ── Auto ──────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
+  // AUTO
+  // ─────────────────────────────────────────────────────
   else if (strcmp(mode, "auto") == 0) {
+
     relay.mode = MODE_AUTO;
+
     strncpy(relay.autoSensorKey, cfg["sensor_key"] | "co2_1",
             sizeof(relay.autoSensorKey) - 1);
+
     relay.autoSensorKey[sizeof(relay.autoSensorKey) - 1] = '\0';
+
     relay.setpointOn = cfg["setpoint_on"] | 1000.0f;
+
     relay.setpointOff = cfg["setpoint_off"] | 800.0f;
+
     logger.info(CAT_RELAY, "Mode set: AUTO",
                 logger.fmt("sensor=%s on>=%.1f off<=%.1f", relay.autoSensorKey,
                            relay.setpointOn, relay.setpointOff));
   }
 
-  // ── Timer ─────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────
+  // TIMER
+  // ─────────────────────────────────────────────────────
   else if (strcmp(mode, "timer") == 0) {
+
     const char *timerType = cfg["type"] | "cyclic";
 
+    // CYCLIC
     if (strcmp(timerType, "cyclic") == 0) {
+
       relay.mode = MODE_TIMER_CYCLIC;
+
       JsonObject cyc = cfg["cyclic"].as<JsonObject>();
+
       relay.cyclicOnMs = (cyc["on_duration_min"] | 30) * 60000UL;
+
       relay.cyclicOffMs = (cyc["off_duration_min"] | 10) * 60000UL;
-      relay.timerPhaseOn = false;
+
+      // Start immediately ON
+      relay.timerPhaseOn = true;
+
       relay.timerStart = millis();
+
       logger.info(CAT_RELAY, "Mode set: TIMER CYCLIC",
                   logger.fmt("on=%lum off=%lum", relay.cyclicOnMs / 60000UL,
                              relay.cyclicOffMs / 60000UL));
-    } else if (strcmp(timerType, "scheduled") == 0) {
+    }
+
+    // SCHEDULED
+    else if (strcmp(timerType, "scheduled") == 0) {
+
       relay.mode = MODE_TIMER_SCHEDULED;
+
       JsonObject sched = cfg["scheduled"].as<JsonObject>();
+
       const char *start = sched["start_time"] | "00:00";
+
       sscanf(start, "%d:%d", &relay.schedStartHour, &relay.schedStartMin);
+
       relay.schedOnMs = (sched["on_duration_min"] | 30) * 60000UL;
+
       logger.info(CAT_RELAY, "Mode set: TIMER SCHEDULED",
                   logger.fmt("start=%02d:%02d on=%lum", relay.schedStartHour,
                              relay.schedStartMin, relay.schedOnMs / 60000UL));
-    } else {
-      logger.error(CAT_RELAY, "Unknown timer type",
-                   logger.fmt("type=%s — command ignored", timerType));
+    }
+
+    else {
+
+      logger.error(CAT_RELAY, "Unknown timer type", timerType);
+
       return;
     }
   }
 
   else {
-    logger.error(CAT_RELAY, "Unknown mode",
-                 logger.fmt("mode=%s — command ignored", mode));
+
+    logger.error(CAT_RELAY, "Unknown mode", mode);
+
     return;
   }
 
+  // APPLY IMMEDIATELY
+  applyRelayMode();
+
+  // PUBLISH ONCE ONLY
   publishRelayState();
 }
 
-// ─────────────────────────────────────────────────────────
-// applyRelayMode()
-// ─────────────────────────────────────────────────────────
 void applyRelayMode() {
+
   bool desired = relay.physicalOn;
 
   switch (relay.mode) {
 
+  // ── MANUAL ────────────────────────────────────────────
   case MODE_MANUAL:
     desired = relay.manualTarget;
     break;
 
+  // ── AUTO ──────────────────────────────────────────────
   case MODE_AUTO: {
+
     float val = lookupSensorValue(relay.autoSensorKey);
+
     if (isnan(val)) {
-      // Sensor cache is NAN — either not present or last read failed
       logger.warn(CAT_RELAY, "Auto mode: sensor unavailable",
                   logger.fmt("key=%s — relay holds current state",
                              relay.autoSensorKey));
-      return; // keep current physical state
+      return;
     }
+
     if (!relay.physicalOn && val >= relay.setpointOn) {
+
       desired = true;
-      logger.info(CAT_RELAY, "Auto mode: threshold crossed → ON",
+
+      logger.info(CAT_RELAY, "Auto threshold crossed → ON",
                   logger.fmt("key=%s val=%.1f setpoint_on=%.1f",
                              relay.autoSensorKey, val, relay.setpointOn));
+
     } else if (relay.physicalOn && val <= relay.setpointOff) {
+
       desired = false;
-      logger.info(CAT_RELAY, "Auto mode: threshold crossed → OFF",
+
+      logger.info(CAT_RELAY, "Auto threshold crossed → OFF",
                   logger.fmt("key=%s val=%.1f setpoint_off=%.1f",
                              relay.autoSensorKey, val, relay.setpointOff));
     }
+
     break;
   }
 
+  // ── CYCLIC TIMER ──────────────────────────────────────
   case MODE_TIMER_CYCLIC: {
+
     unsigned long elapsed = millis() - relay.timerStart;
-    unsigned long phase =
+
+    unsigned long phaseDuration =
         relay.timerPhaseOn ? relay.cyclicOnMs : relay.cyclicOffMs;
-    if (elapsed >= phase) {
+
+    if (elapsed >= phaseDuration) {
+
       relay.timerPhaseOn = !relay.timerPhaseOn;
       relay.timerStart = millis();
-      desired = relay.timerPhaseOn;
-      logger.info(CAT_RELAY, "Cyclic timer: phase flipped",
-                  logger.fmt("new phase=%s", desired ? "ON" : "OFF"));
-      if (desired != relay.physicalOn) {
-        setRelayGPIO(desired);
-        publishRelayState();
-        return;
-      }
+
+      logger.info(
+          CAT_RELAY, "Cyclic timer phase flipped",
+          logger.fmt("new phase=%s", relay.timerPhaseOn ? "ON" : "OFF"));
     }
+
     desired = relay.timerPhaseOn;
+
     break;
   }
 
+  // ── SCHEDULED TIMER ───────────────────────────────────
   case MODE_TIMER_SCHEDULED: {
+
     struct tm now {};
+
     if (!getLocalTime(&now)) {
+
       logger.warn(CAT_RELAY, "Scheduled timer: NTP unavailable",
                   "Relay holds current state");
+
       return;
     }
+
     int nowMin = now.tm_hour * 60 + now.tm_min;
+
     int startMin = relay.schedStartHour * 60 + relay.schedStartMin;
+
     int diff = nowMin - startMin;
+
     if (diff < 0)
       diff += 1440;
+
     desired = (diff < (int)(relay.schedOnMs / 60000UL));
+
     break;
   }
   }
 
+  // ── Apply physical state ──────────────────────────────
   if (desired != relay.physicalOn) {
+
     logger.info(CAT_RELAY, "State changed",
                 logger.fmt("%s → %s", relay.physicalOn ? "ON" : "OFF",
                            desired ? "ON" : "OFF"));
+
     setRelayGPIO(desired);
-    publishRelayState();
   }
 }
-
 // ─────────────────────────────────────────────────────────
 // setRelayGPIO()
 // Active-LOW relay module: LOW = ON, HIGH = OFF
@@ -570,6 +656,10 @@ void publishRelayState() {
 
   char buffer[384];
   size_t n = serializeJson(doc, buffer);
+  strncpy(lastPublishedRelayState, buffer,
+          sizeof(lastPublishedRelayState) - 1); // NEW
+
+  lastPublishedRelayState[sizeof(lastPublishedRelayState) - 1] = '\0'; // NEW
 
   if (mqtt.publish(TOPIC_RELAY, (const uint8_t *)buffer, n, true)) {
     logger.info(CAT_MQTT, "Relay state published",
@@ -607,18 +697,6 @@ float lookupSensorValue(const char *key) {
   return NAN;
 }
 
-// ─────────────────────────────────────────────────────────
-// publishSensors()
-//
-// Per-sensor logic:
-//   - Sensor disabled (#define absent) → skipped entirely, one-time warn at
-//   boot
-//   - Sensor read OK                   → added to array, health reset
-//   - Sensor read fail, under threshold → skipped this tick, debug log
-//   - Sensor read fail, over threshold  → error logged (serial + MQTT /log)
-//   - Sensor recovers after failure     → info log "sensor recovered"
-//   - All sensors fail                  → nothing published this tick
-// ─────────────────────────────────────────────────────────
 void publishSensors() {
   bool anySensor = false;
 
@@ -758,35 +836,89 @@ void publishSensors() {
   JsonArray arr = doc["sensors"].to<JsonArray>();
 
 #ifdef HAS_DHT22
-  if (!isnan(sensorCache.temp)) {
+  {
     JsonObject s = arr.add<JsonObject>();
+
+    bool connected = !isnan(sensorCache.temp);
+
     s["key"] = "temp_1";
-    s["value"] = round(sensorCache.temp * 100.0f) / 100.0f;
-    anySensor = true;
+    s["connected"] = connected;
+
+    if (connected) {
+
+      s["value"] = round(sensorCache.temp * 100.0f) / 100.0f;
+
+      anySensor = true;
+
+    } else {
+
+      s["value"] = nullptr;
+    }
   }
-  if (!isnan(sensorCache.hum)) {
+
+  // hum_1
+  {
     JsonObject s = arr.add<JsonObject>();
+
+    bool connected = !isnan(sensorCache.hum);
+
     s["key"] = "hum_1";
-    s["value"] = round(sensorCache.hum * 100.0f) / 100.0f;
-    anySensor = true;
+    s["connected"] = connected;
+
+    if (connected) {
+
+      s["value"] = round(sensorCache.hum * 100.0f) / 100.0f;
+
+      anySensor = true;
+
+    } else {
+
+      s["value"] = nullptr;
+    }
   }
 #endif
 
 #ifdef HAS_MQ135
-  if (!isnan(sensorCache.co2)) {
+  {
     JsonObject s = arr.add<JsonObject>();
+
+    bool connected = !isnan(sensorCache.co2);
+
     s["key"] = "co2_1";
-    s["value"] = round(sensorCache.co2 * 100.0f) / 100.0f;
-    anySensor = true;
+    s["connected"] = connected;
+
+    if (connected) {
+
+      s["value"] = round(sensorCache.co2 * 100.0f) / 100.0f;
+
+      anySensor = true;
+
+    } else {
+
+      s["value"] = nullptr;
+    }
   }
 #endif
 
 #ifdef HAS_MQ137
-  if (!isnan(sensorCache.nh3)) {
+  {
     JsonObject s = arr.add<JsonObject>();
+
+    bool connected = !isnan(sensorCache.nh3);
+
     s["key"] = "nh3_1";
-    s["value"] = round(sensorCache.nh3 * 100.0f) / 100.0f;
-    anySensor = true;
+    s["connected"] = connected;
+
+    if (connected) {
+
+      s["value"] = round(sensorCache.nh3 * 100.0f) / 100.0f;
+
+      anySensor = true;
+
+    } else {
+
+      s["value"] = nullptr;
+    }
   }
 #endif
 
@@ -794,7 +926,7 @@ void publishSensors() {
   if (!anySensor) {
     logger.error(CAT_SENSOR, "All sensors failed",
                  "No data published this tick");
-    return;
+    // return;
   }
 
   char buffer[384];
