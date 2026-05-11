@@ -98,6 +98,56 @@ float readMQAverage(int pin);
 float lookupSensorValue(const char *key);
 
 // ─────────────────────────────────────────────────────────
+// LED status blinker (non-blocking)
+// ─────────────────────────────────────────────────────────
+enum LedPattern { LED_FAST_BLINK, LED_SLOW_PULSE };
+
+struct LedState {
+  LedPattern pattern = LED_FAST_BLINK;
+  bool pinState = false;
+  unsigned long lastToggle = 0;
+} led;
+
+void updateLed() {
+  unsigned long now = millis();
+  switch (led.pattern) {
+
+  case LED_FAST_BLINK:
+    if (now - led.lastToggle >= 200) {
+      led.lastToggle = now;
+      led.pinState = !led.pinState;
+      digitalWrite(PIN_STATUS_LED, led.pinState ? HIGH : LOW);
+    }
+    break;
+
+  case LED_SLOW_PULSE:
+    if (led.pinState) {
+      if (now - led.lastToggle >= 2000) {
+        led.lastToggle = now;
+        led.pinState = false;
+        digitalWrite(PIN_STATUS_LED, LOW);
+      }
+    } else {
+      if (now - led.lastToggle >= 200) {
+        led.lastToggle = now;
+        led.pinState = true;
+        digitalWrite(PIN_STATUS_LED, HIGH);
+      }
+    }
+    break;
+  }
+}
+
+void setLedPattern(LedPattern p) {
+  if (led.pattern == p)
+    return;
+  led.pattern = p;
+  led.pinState = false;
+  led.lastToggle = millis();
+  digitalWrite(PIN_STATUS_LED, LOW);
+}
+
+// ─────────────────────────────────────────────────────────
 // setup()
 // ─────────────────────────────────────────────────────────
 void setup() {
@@ -115,6 +165,9 @@ void setup() {
   pinMode(PIN_RELAY, OUTPUT);
   setRelayGPIO(false);
   logger.info(CAT_RELAY, "Init", "Relay forced OFF at boot");
+
+  pinMode(PIN_STATUS_LED, OUTPUT);
+  digitalWrite(PIN_STATUS_LED, LOW);
 
   // ADC
   analogReadResolution(12);
@@ -171,9 +224,14 @@ void loop() {
 
   // Wi-Fi watchdog
   if (WiFi.status() != WL_CONNECTED) {
+    setLedPattern(LED_FAST_BLINK); // ← lost connection
     logger.warn(CAT_WIFI, "Connection lost", "Attempting reconnect");
     connectWiFi();
+  } else {
+    setLedPattern(LED_SLOW_PULSE); // ← connected
   }
+
+  updateLed();
 
   // MQTT watchdog
   if (!mqtt.connected()) {
