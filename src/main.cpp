@@ -614,11 +614,70 @@ void setRelayGPIO(bool on) {
 // ─────────────────────────────────────────────────────────
 // publishRelayState()
 // ─────────────────────────────────────────────────────────
+// void publishRelayState() {
+//   JsonDocument doc;
+//   doc["relay"] = RELAY_KEY;
+//   doc["state"] = relay.physicalOn ? 1 : 0;
+
+//   JsonObject cfg = doc["mode_config"].to<JsonObject>();
+
+//   switch (relay.mode) {
+//   case MODE_MANUAL:
+//     doc["mode"] = "manual";
+//     cfg["type"] = "manual";
+//     cfg["state"] = relay.manualTarget ? 1 : 0;
+//     break;
+//   case MODE_AUTO:
+//     doc["mode"] = "auto";
+//     cfg["sensor_key"] = relay.autoSensorKey;
+//     cfg["setpoint_on"] = relay.setpointOn;
+//     cfg["setpoint_off"] = relay.setpointOff;
+//     break;
+//   case MODE_TIMER_CYCLIC: {
+//     doc["mode"] = "timer";
+//     cfg["type"] = "cyclic";
+//     JsonObject cyc = cfg["cyclic"].to<JsonObject>();
+//     cyc["on_duration_min"] = relay.cyclicOnMs / 60000UL;
+//     cyc["off_duration_min"] = relay.cyclicOffMs / 60000UL;
+//     break;
+//   }
+//   case MODE_TIMER_SCHEDULED: {
+//     doc["mode"] = "timer";
+//     cfg["type"] = "scheduled";
+//     JsonObject sched = cfg["scheduled"].to<JsonObject>();
+//     char buf[6];
+//     snprintf(buf, sizeof(buf), "%02d:%02d", relay.schedStartHour,
+//              relay.schedStartMin);
+//     sched["start_time"] = buf;
+//     sched["on_duration_min"] = relay.schedOnMs / 60000UL;
+//     break;
+//   }
+//   }
+
+//   char buffer[384];
+//   size_t n = serializeJson(doc, buffer);
+//   strncpy(lastPublishedRelayState, buffer,
+//           sizeof(lastPublishedRelayState) - 1); // NEW
+
+//   lastPublishedRelayState[sizeof(lastPublishedRelayState) - 1] = '\0'; // NEW
+
+//   if (mqtt.publish(TOPIC_RELAY, (const uint8_t *)buffer, n, true)) {
+//     logger.info(CAT_MQTT, "Relay state published",
+//                 logger.fmt("topic=%s payload=%s", TOPIC_RELAY, buffer));
+//   } else {
+//     logger.error(CAT_MQTT, "Relay publish failed",
+//                  logger.fmt("topic=%s rc=%d", TOPIC_RELAY, mqtt.state()));
+//   }
+// }
+
 void publishRelayState() {
   JsonDocument doc;
+
+  // Root level fields
   doc["relay"] = RELAY_KEY;
   doc["state"] = relay.physicalOn ? 1 : 0;
 
+  // Set the "mode" string and build "mode_config"
   JsonObject cfg = doc["mode_config"].to<JsonObject>();
 
   switch (relay.mode) {
@@ -627,20 +686,24 @@ void publishRelayState() {
     cfg["type"] = "manual";
     cfg["state"] = relay.manualTarget ? 1 : 0;
     break;
+
   case MODE_AUTO:
     doc["mode"] = "auto";
     cfg["sensor_key"] = relay.autoSensorKey;
     cfg["setpoint_on"] = relay.setpointOn;
     cfg["setpoint_off"] = relay.setpointOff;
     break;
+
   case MODE_TIMER_CYCLIC: {
     doc["mode"] = "timer";
     cfg["type"] = "cyclic";
+    // Nested cyclic object
     JsonObject cyc = cfg["cyclic"].to<JsonObject>();
     cyc["on_duration_min"] = relay.cyclicOnMs / 60000UL;
     cyc["off_duration_min"] = relay.cyclicOffMs / 60000UL;
     break;
   }
+
   case MODE_TIMER_SCHEDULED: {
     doc["mode"] = "timer";
     cfg["type"] = "scheduled";
@@ -654,13 +717,15 @@ void publishRelayState() {
   }
   }
 
+  // Serialize to buffer
   char buffer[384];
   size_t n = serializeJson(doc, buffer);
-  strncpy(lastPublishedRelayState, buffer,
-          sizeof(lastPublishedRelayState) - 1); // NEW
 
-  lastPublishedRelayState[sizeof(lastPublishedRelayState) - 1] = '\0'; // NEW
+  // Copy to lastPublishedRelayState for tracking
+  strncpy(lastPublishedRelayState, buffer, sizeof(lastPublishedRelayState) - 1);
+  lastPublishedRelayState[sizeof(lastPublishedRelayState) - 1] = '\0';
 
+  // Publish via MQTT
   if (mqtt.publish(TOPIC_RELAY, (const uint8_t *)buffer, n, true)) {
     logger.info(CAT_MQTT, "Relay state published",
                 logger.fmt("topic=%s payload=%s", TOPIC_RELAY, buffer));
