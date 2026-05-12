@@ -20,7 +20,7 @@
 // Device identity — change this per device before flashing
 // All 3 MQTT topics are built automatically from DEVICE_ID
 // ─────────────────────────────────────────────────────────
-#define DEVICE_ID "20051648-94c5-4461-8646-8415aea544e1"
+#define DEVICE_ID "8b00c8a0-2d4a-4fe5-b6e8-6e5a39f089a5"
 #define MQTT_CLIENT_ID DEVICE_ID
 
 // ─────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@
 #include <WiFiManager.h>
 #include <time.h>
 
+Logger logger;
+
 // ─────────────────────────────────────────────────────────
 // Runtime flags
 // ─────────────────────────────────────────────────────────
@@ -578,7 +580,7 @@ void applyRelayMode() {
       logger.info(CAT_RELAY, "Auto threshold crossed → ON",
                   logger.fmt("key=%s val=%.1f setpoint_on=%.1f",
                              relay.autoSensorKey, val, relay.setpointOn));
-
+      publishRelayState();
     } else if (relay.physicalOn && val <= relay.setpointOff) {
 
       desired = false;
@@ -586,6 +588,7 @@ void applyRelayMode() {
       logger.info(CAT_RELAY, "Auto threshold crossed → OFF",
                   logger.fmt("key=%s val=%.1f setpoint_off=%.1f",
                              relay.autoSensorKey, val, relay.setpointOff));
+      publishRelayState();
     }
 
     break;
@@ -607,6 +610,7 @@ void applyRelayMode() {
       logger.info(
           CAT_RELAY, "Cyclic timer phase flipped",
           logger.fmt("new phase=%s", relay.timerPhaseOn ? "ON" : "OFF"));
+      publishRelayState();
     }
 
     desired = relay.timerPhaseOn;
@@ -650,6 +654,7 @@ void applyRelayMode() {
                            desired ? "ON" : "OFF"));
 
     setRelayGPIO(desired);
+    publishRelayState();
   }
 }
 // ─────────────────────────────────────────────────────────
@@ -658,7 +663,7 @@ void applyRelayMode() {
 // ─────────────────────────────────────────────────────────
 void setRelayGPIO(bool on) {
   relay.physicalOn = on;
-  digitalWrite(PIN_RELAY, on ? LOW : HIGH);
+  digitalWrite(PIN_RELAY, on ? HIGH : LOW);
   logger.debug(CAT_RELAY, "GPIO set",
                logger.fmt("pin=%d level=%s physical=%s", PIN_RELAY,
                           on ? "LOW" : "HIGH", on ? "ON" : "OFF"));
