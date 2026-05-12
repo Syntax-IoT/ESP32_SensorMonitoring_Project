@@ -876,7 +876,7 @@ void publishSensors() {
   // MQ sensors on ADC return 0 when completely disconnected
   // (pin floats to GND through internal pull-down).
   // A reading of 0 is physically impossible for a powered sensor.
-  if (co2 < 1.0f) {
+  if (co2 < 30.0f) {
     mq135Health.failCount++;
     sensorCache.co2 = NAN;
 
@@ -910,7 +910,7 @@ void publishSensors() {
 #ifdef HAS_MQ137
   float nh3 = readMQAverage(PIN_MQ137);
 
-  if (nh3 < 1.0f) {
+  if (nh3 < 30.0f) {
     mq137Health.failCount++;
     sensorCache.nh3 = NAN;
 

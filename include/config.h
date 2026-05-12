@@ -56,7 +56,7 @@
 // ─────────────────────────────────────────────────────────
 #define DHT_TYPE DHT22
 #define SENSOR_INTERVAL_MS 5000 // publish every 5 seconds
-#define ADC_SAMPLES 10          // average 10 readings to reduce noise
+#define ADC_SAMPLES 20          // average 10 readings to reduce noise
 #define ADC_WARMUP_MS 30000     // MQ heater warm-up: 30 seconds
 #define DHT_MAX_FAILS 3         // consecutive fails before error log
 
