@@ -89,6 +89,7 @@ void syncNTP();
 void mqttCallback(char *topic, byte *payload, unsigned int length);
 void publishSensors();
 void publishRelayState();
+void publishRelayDefaultState();
 void applyRelayMode();
 void setRelayGPIO(bool on);
 float readMQAverage(int pin);
@@ -570,6 +571,7 @@ void applyRelayMode() {
       logger.warn(CAT_RELAY, "Auto mode: sensor unavailable",
                   logger.fmt("key=%s — relay holds current state",
                              relay.autoSensorKey));
+      relay.mode = MODE_MANUAL;
       return;
     }
 
@@ -727,6 +729,40 @@ void setRelayGPIO(bool on) {
 //                  logger.fmt("topic=%s rc=%d", TOPIC_RELAY, mqtt.state()));
 //   }
 // }
+void publishRelayDefaultState() {
+  JsonDocument doc;
+  relay.mode = MODE_MANUAL;
+
+  // Root level fields
+  doc["relay"] = RELAY_KEY;
+  doc["state"] = relay.physicalOn ? 1 : 0;
+  doc["mode"] = "manual";
+  // doc["mode"] = "timer";
+
+  // Set the "mode" string and build "mode_config"
+  JsonObject cfg = doc["mode_config"].to<JsonObject>();
+
+  cfg["type"] = "manual";
+  // cfg["type"] = "cyclic";
+  cfg["state"] = relay.manualTarget ? 1 : 0;
+
+  // Serialize to buffer
+  char buffer[384];
+  size_t n = serializeJson(doc, buffer);
+
+  // Copy to lastPublishedRelayState for tracking
+  strncpy(lastPublishedRelayState, buffer, sizeof(lastPublishedRelayState) - 1);
+  lastPublishedRelayState[sizeof(lastPublishedRelayState) - 1] = '\0';
+
+  // Publish via MQTT
+  if (mqtt.publish(TOPIC_RELAY, (const uint8_t *)buffer, n, true)) {
+    logger.info(CAT_MQTT, "Relay state published",
+                logger.fmt("topic=%s payload=%s", TOPIC_RELAY, buffer));
+  } else {
+    logger.error(CAT_MQTT, "Relay publish failed",
+                 logger.fmt("topic=%s rc=%d", TOPIC_RELAY, mqtt.state()));
+  }
+}
 
 void publishRelayState() {
   JsonDocument doc;
