@@ -17,10 +17,17 @@
 #define MQTT_PASSWORD ""
 
 // ─────────────────────────────────────────────────────────
+// ⬇️  غيّر هنا اسم الشبكة والباسورد
+// ─────────────────────────────────────────────────────────
+#define FALLBACK_SSID "WE_B92CDE"
+#define FALLBACK_PASSWORD "8c5576b0"
+// ─────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────
 // Device identity — change this per device before flashing
 // All 3 MQTT topics are built automatically from DEVICE_ID
 // ─────────────────────────────────────────────────────────
-#define DEVICE_ID "8b00c8a0-2d4a-4fe5-b6e8-6e5a39f089a5"
+#define DEVICE_ID "20051648-94c5-4461-8646-8415aea544e1"
 #define MQTT_CLIENT_ID DEVICE_ID
 
 // ─────────────────────────────────────────────────────────
@@ -59,6 +66,26 @@
 #define ADC_SAMPLES 20          // average 10 readings to reduce noise
 #define ADC_WARMUP_MS 30000     // MQ heater warm-up: 30 seconds
 #define DHT_MAX_FAILS 3         // consecutive fails before error log
+
+// ─────────────────────────────────────────────────────────
+// MQ sensor calibration
+// ─────────────────────────────────────────────────────────
+#define MQ_VCC 5.0f
+#define MQ_VREF 3.3f
+#define MQ_ADC_MAX 4095.0f
+#define MQ_RL 10.0f
+
+#define MQ_AUTO_CALIBRATE 1
+
+#define MQ135_R0_DEFAULT 76.63f
+#define MQ135_A 110.47f
+#define MQ135_B -2.862f
+#define MQ135_BASELINE_PPM 400.0f
+
+#define MQ137_R0_DEFAULT 30.0f
+#define MQ137_A 102.2f
+#define MQ137_B -2.473f
+#define MQ137_BASELINE_PPM 0.5f
 
 // ─────────────────────────────────────────────────────────
 // Alert thresholds
