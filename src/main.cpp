@@ -357,14 +357,13 @@ void loop() {
       lastReconnect = now;
       connectMQTT();
     }
-    return;
-  }
+  } else {
+    mqtt.loop();
 
-  mqtt.loop();
-
-  if (millis() - lastPublish >= SENSOR_INTERVAL_MS) {
-    lastPublish = millis();
-    publishSensors();
+    if (millis() - lastPublish >= SENSOR_INTERVAL_MS) {
+      lastPublish = millis();
+      publishSensors();
+    }
   }
 
   applyRelayMode();
