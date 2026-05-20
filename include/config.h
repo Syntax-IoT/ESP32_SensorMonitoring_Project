@@ -70,19 +70,21 @@
 // ─────────────────────────────────────────────────────────
 // MQ sensor calibration
 // ─────────────────────────────────────────────────────────
+#define MQ_DIVIDER_RATIO 1.5f
+
 #define MQ_VCC 5.0f
 #define MQ_VREF 3.3f
 #define MQ_ADC_MAX 4095.0f
 #define MQ_RL 10.0f
 
-#define MQ_AUTO_CALIBRATE 1
+#define MQ_AUTO_CALIBRATE 0
 
-#define MQ135_R0_DEFAULT 76.63f
+#define MQ135_R0_DEFAULT 57.12f
 #define MQ135_A 110.47f
 #define MQ135_B -2.862f
 #define MQ135_BASELINE_PPM 400.0f
 
-#define MQ137_R0_DEFAULT 30.0f
+#define MQ137_R0_DEFAULT 0.45f
 #define MQ137_A 102.2f
 #define MQ137_B -2.473f
 #define MQ137_BASELINE_PPM 0.5f

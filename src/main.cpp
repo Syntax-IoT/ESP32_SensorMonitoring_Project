@@ -104,7 +104,9 @@ void factoryResetAndRestart();
 //                              MQ MATH HELPERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-float adcToVout(float adc) { return (adc / MQ_ADC_MAX) * MQ_VREF; }
+float adcToVout(float adc) {
+  return ((adc / MQ_ADC_MAX) * MQ_VREF) * MQ_DIVIDER_RATIO;
+}
 
 float adcToRs(float adc) {
   float v = adcToVout(adc);
